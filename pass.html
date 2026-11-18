@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Selfie Chaos · One phone</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+/* One phone, passed from hand to hand. Players type their own "Who…?" questions,
+   each votes in secret on their turn with the phone, and the one voted asks next.
+   Nothing leaves the phone: no server, no accounts. The player list is remembered locally. */
+:root{
+  --ink:#0e0d12; --text:#f6f4f1; --dim:rgba(246,244,241,.68); --accent:#ffd27a;
+  --glass:rgba(255,255,255,.07); --glass-strong:rgba(255,255,255,.13); --edge:rgba(255,255,255,.2);
+  --blur:blur(14px) saturate(1.3);
+  --font:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:
+    radial-gradient(60% 40% at 15% 0%,rgba(122,74,140,.5),transparent 70%),
+    radial-gradient(55% 40% at 100% 35%,rgba(40,110,120,.4),transparent 70%),
+    radial-gradient(70% 45% at 30% 100%,rgba(150,80,60,.35),transparent 70%),var(--ink);
+  background-attachment:fixed;color:var(--text);font-family:var(--font);font-size:15px;font-weight:500;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;border:0;cursor:pointer;background:none}
+.glass{background:var(--glass);border:1px solid var(--edge);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+
+#app{max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;
+  padding:calc(var(--st) + 12px) 16px calc(var(--sb) + 18px)}
+#top{display:flex;align-items:center;gap:8px;min-height:28px}
+#brand{font-weight:800;font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+#round{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;padding:5px 11px;border-radius:99px}
+#quit{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--dim);padding:5px 4px}
+#clock{margin-top:12px;display:flex;align-items:center;gap:10px}
+#track{flex:1;height:4px;border-radius:9px;background:rgba(255,255,255,.14);overflow:hidden}
+#bar{height:100%;background:var(--accent);transform-origin:left;border-radius:9px}
+#secs{font-weight:800;font-size:13px;min-width:1.4em;text-align:right;font-variant-numeric:tabular-nums}
+#clock.low #secs{color:var(--accent)}
+
+#stage{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding-top:20px}
+#stage.top{justify-content:flex-start}
+#stage.mid{justify-content:center;align-items:center;text-align:center}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0}
+.kicker.gold{color:var(--accent)}
+h1{font-weight:800;font-size:clamp(26px,7.4vw,34px);line-height:1.08;letter-spacing:-.02em;margin:0;text-wrap:balance}
+p{margin:0;line-height:1.45}
+.dim{color:var(--dim)}
+.note{font-size:12px;color:var(--dim)}
+.toast{padding:8px 14px;border-radius:99px;font-size:13px;font-weight:700;color:var(--accent)}
+
+.btn{background:var(--text);color:var(--ink);font-weight:800;font-size:16px;border-radius:16px;padding:15px 20px;width:100%}
+.btn:disabled{opacity:.35}
+.field{display:flex;gap:8px;padding:6px;border-radius:18px;width:100%}
+.field input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font:600 16px var(--font);padding:9px 10px;
+  -webkit-user-select:text;user-select:text}
+.field input::placeholder{color:var(--dim);font-weight:500}
+.field button{background:var(--text);color:var(--ink);font-weight:800;border-radius:13px;padding:10px 18px}
+
+.av{flex:none;display:block;border-radius:50%;width:36px;height:36px}
+.av.big{width:112px;height:112px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.faces{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 6px;scrollbar-width:none}
+.faces::-webkit-scrollbar{display:none}
+.faces button{flex:none;border-radius:50%;padding:3px;border:2px solid transparent;opacity:.55;transition:opacity .15s,border-color .15s}
+.faces button.on{border-color:var(--accent);opacity:1}
+.faces .av{width:44px;height:44px}
+
+.list{display:flex;flex-direction:column;gap:8px;width:100%}
+.who{display:flex;align-items:center;gap:12px;padding:8px 8px 8px 10px;border-radius:14px;font-weight:700;font-size:16px;animation:in .25s ease-out}
+.who button{margin-left:auto;width:36px;height:36px;border-radius:50%;color:var(--dim);font-size:20px;line-height:1}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+.tile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 8px;border-radius:16px;text-align:center;
+  font-weight:800;font-size:16px;transition:opacity .35s,transform .2s,border-color .1s,background .1s}
+.tile .av{width:52px;height:52px}
+button.tile:active{transform:scale(.96);background:var(--glass-strong)}
+.tile.hot{border-color:var(--accent);background:rgba(255,210,122,.16)}
+.tile.out{opacity:.25;transform:scale(.96)}
+.tile.win{border-color:var(--accent);background:rgba(255,210,122,.2);color:var(--accent);transform:scale(1.04);
+  box-shadow:0 0 28px rgba(255,210,122,.3)}
+.grid.small .tile{padding:10px 8px;font-size:15px}
+.grid.small .tile .av{width:40px;height:40px}
+.badge{align-self:flex-start;background:var(--accent);color:var(--ink);font-weight:800;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;padding:6px 12px;border-radius:99px;animation:pop .4s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+.fade{animation:in .35s ease-out}
+.dots::after{content:"";animation:dots 1.2s steps(4) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <span id="brand">Selfie Chaos</span>
+    <span id="round" class="glass" hidden></span>
+    <button id="quit" type="button" hidden>Players</button>
+  </div>
+  <div id="clock" hidden><div id="track"><div id="bar"></div></div><span id="secs"></span></div>
+  <div id="stage"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const rnd = n => Math.floor(Math.random() * n);
+const pick = a => a[rnd(a.length)];
+
+const LINES = ['No one is surprised.', 'You’ve been exposed.', 'That was personal.', 'Deny it all you want.', 'The table has decided.'];
+const ASK_SECS = 15, MIN_PLAYERS = 3, MAX_PLAYERS = 10, STORE = 'onephone.players';
+
+/* ---------- illustrated avatars: a few drawn faces to choose from ---------- */
+const FACES = [
+  {bg: '#7a4a8c', skin: '#f1c9a5', hair: '#3b2a20', style: 'short'},
+  {bg: '#2f7f86', skin: '#e0ac80', hair: '#1c1a1a', style: 'long'},
+  {bg: '#b0603c', skin: '#8d5a3b', hair: '#161212', style: 'curly'},
+  {bg: '#4b6cb0', skin: '#f6d6bd', hair: '#c98a3a', style: 'bun'},
+  {bg: '#5c8a4e', skin: '#c88e62', hair: '#2a1c14', style: 'bald', beard: 1},
+  {bg: '#a8456b', skin: '#f1c9a5', hair: '#8c3b24', style: 'long'},
+  {bg: '#8a7a3a', skin: '#6f4630', hair: '#111111', style: 'short', glasses: 1},
+  {bg: '#55597a', skin: '#eebf9a', hair: '#d8d2c4', style: 'curly'},
+  {bg: '#3d7a63', skin: '#a9714b', hair: '#1a1210', style: 'bun', glasses: 1},
+  {bg: '#9a5a2e', skin: '#f6d6bd', hair: '#e2c27a', style: 'short', beard: 1},
+];
+function face(i, cls = '') {
+  const f = FACES[i % FACES.length];
+  const top = 'M13.6 20c-.6-7.4 4.4-11.4 10.4-11.4S35 12.600 34.400 20c-2.400-4-6.400-5.400-10.400-5.400S16 16 13.600 20z';
+  const hair = {
+    short: `<path d="${top}" fill="${f.hair}"/>`,
+    long: `<path d="${top}" fill="${f.hair}"/>`,
+    bun: `<circle cx="24" cy="7.500" r="4" fill="${f.hair}"/><path d="${top}" fill="${f.hair}"/>`,
+    curly: [[15, 15], [19, 10.500], [24, 9], [29, 10.500], [33, 15], [14, 20], [34, 20]]
+      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.200" fill="${f.hair}"/>`).join(''),
+    bald: '',
+  }[f.style];
+  return `<svg class="av ${cls}" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" fill="${f.bg}"/>
+    ${f.style === 'long' ? `<path d="M12.500 21c0-9 5-13 11.500-13s11.500 4 11.500 13v15h-23z" fill="${f.hair}"/>` : ''}
+    <path d="M6 50c0-10 8-15 18-15s18 5 18 15z" fill="rgba(255,255,255,.88)"/>
+    <rect x="20.500" y="28" width="7" height="8" rx="3" fill="${f.skin}"/>
+    <circle cx="24" cy="21" r="10.200" fill="${f.skin}"/>
+    ${f.beard ? `<path d="M14.200 23c1 7.500 5 10 9.800 10s8.800-2.500 9.800-10c-3 3.200-6.200 4.200-9.800 4.200s-6.800-1-9.800-4.200z" fill="${f.hair}"/>` : ''}
+    ${hair}
+    <circle cx="20.300" cy="21" r="1.150" fill="#1b1512"/><circle cx="27.700" cy="21" r="1.150" fill="#1b1512"/>
+    ${f.glasses ? `<g fill="none" stroke="#1b1512" stroke-width=".9"><circle cx="20.300" cy="21" r="3"/><circle cx="27.700" cy="21" r="3"/><path d="M23.300 21h1.400"/></g>` : ''}
+    <path d="M20.600 25.300q3.400 2.700 6.800 0" fill="none" stroke="${f.beard ? '#f6f4f1' : '#1b1512'}" stroke-width="1.100" stroke-linecap="round"/></svg>`;
+}
+
+const G = {players: [], phase: 'players', asker: null, round: 0, q: '', votes: new Map(), order: [], turn: 0, faceI: 0, note: ''};
+window.onePhone = G;
+function load() { try { const a = JSON.parse(localStorage.getItem(STORE) || '[]'); if (Array.isArray(a)) G.players = a.filter(p => p && p.name).slice(0, MAX_PLAYERS).map(p => ({name: String(p.name).slice(0, 14), a: p.a | 0, asked: 0})); } catch (e) {} }
+function save() { try { localStorage.setItem(STORE, JSON.stringify(G.players.map(p => ({name: p.name, a: p.a})))); } catch (e) {} }
+
+/* ---------- timers and the countdown ---------- */
+let timers = [];
+const later = (f, ms) => { const id = setTimeout(f, ms); timers.push(id); return id; };
+const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+let clock = null;
+function startClock(sec, onEnd) { clock = {end: performance.now() + sec * 1000, dur: sec * 1000, onEnd}; $('#clock').hidden = false; drawClock(); }
+function stopClock() { clock = null; $('#clock').hidden = true; }
+function drawClock() {
+  if (!clock) return;
+  const left = clock.end - performance.now();
+  $('#bar').style.transform = `scaleX(${Math.max(0, left / clock.dur)})`;
+  $('#secs').textContent = Math.ceil(Math.max(0, left) / 1000);
+  $('#clock').classList.toggle('low', left < 5000);
+  if (left <= 0) { const f = clock.onEnd; stopClock(); f(); }
+}
+setInterval(drawClock, 100);
+
+let ac;
+function blip(f, d = .12, type = 'sine', g = .06) {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const o = ac.createOscillator(), v = ac.createGain();
+    o.type = type; o.frequency.value = f; v.gain.value = g;
+    v.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + d);
+    o.connect(v).connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
+  } catch (e) {}
+}
+
+const stage = $('#stage');
+function show(html, where = '') { stage.className = where; stage.innerHTML = html; window.scrollTo(0, 0); }
+const others = p => G.players.filter(o => o !== p);
+function setRound() { const r = $('#round'); r.hidden = !G.round; r.textContent = 'ROUND ' + String(G.round).padStart(2, '0'); }
+
+/* ---------- 1. who is playing ---------- */
+function players(keepName = '') {
+  clearTimers(); stopClock(); G.phase = 'players'; G.round = 0; setRound(); $('#quit').hidden = true;
+  const n = G.players.length, full = n >= MAX_PLAYERS;
+  show(`<p class="kicker">One phone · pass it around</p>
+    <h1>Who’s playing?</h1>
+    <div class="list">${G.players.map((p, i) => `<div class="who glass">${face(p.a)}${esc(p.name)}<button type="button" data-i="${i}" aria-label="Remove ${esc(p.name)}">×</button></div>`).join('')}</div>
+    ${full ? '' : `<div class="faces" id="faces">${FACES.map((f, i) => `<button type="button" data-i="${i}" class="${i === G.faceI ? 'on' : ''}" aria-label="Face ${i + 1}">${face(i)}</button>`).join('')}</div>
+    <form id="addF" class="field glass" autocomplete="off">
+      <input id="name" type="text" maxlength="14" enterkeyhint="done" aria-label="Player name" placeholder="${n ? 'Next player’s name' : 'First player’s name'}">
+      <button type="submit">Add</button>
+    </form>`}
+    <button class="btn" id="startB" type="button" ${n < MIN_PLAYERS ? 'disabled' : ''}>Start game</button>
+    <p class="note">${n < MIN_PLAYERS ? `Add at least ${MIN_PLAYERS} players. Pick a face, type a name.` : n < 4 ? 'Works with three, better with four or more.' : 'Everyone asks their own “Who…?” questions. Votes are secret.'}</p>`,
+    n > 5 ? 'top' : '');
+  stage.querySelectorAll('.who button').forEach(b => b.addEventListener('click', () => { G.players.splice(+b.dataset.i, 1); save(); players($('#name') ? $('#name').value : ''); }));
+  stage.querySelectorAll('#faces button').forEach(b => b.addEventListener('click', () => {
+    G.faceI = +b.dataset.i; stage.querySelectorAll('#faces button').forEach(o => o.classList.toggle('on', o === b));
+  }));
+  if (!full) {
+    $('#name').value = keepName;
+    $('#addF').addEventListener('submit', e => {
+      e.preventDefault();
+      const name = $('#name').value.trim().replace(/\s+/g, ' ');
+      if (!name) return;
+      G.players.push({name, a: G.faceI, asked: 0}); save(); blip(520 + G.players.length * 50, .08);
+      const used = new Set(G.players.map(p => p.a));       // offer a face nobody has taken yet
+      for (let k = 1; k <= FACES.length; k++) { const c = (G.faceI + k) % FACES.length; if (!used.has(c)) { G.faceI = c; break; } }
+      players(); if ($('#name')) $('#name').focus();
+    });
+  }
+  $('#startB').addEventListener('click', () => {
+    G.players.forEach(p => { p.asked = 0; }); $('#quit').hidden = false;
+    blip(784, .2, 'triangle'); hand(pick(G.players), '');
+  });
+}
+
+/* ---------- 2. hand the phone to the asker ---------- */
+function hand(asker, note) {
+  clearTimers(); stopClock(); G.phase = 'hand'; G.asker = asker;
+  show(`${note ? `<p class="toast glass fade">${esc(note)}</p>` : ''}
+    <p class="kicker gold">Next question</p>
+    ${face(asker.a, 'big')}
+    <h1>Hand the phone to ${esc(asker.name)}.</h1>
+    <p class="dim">You get ${ASK_SECS} seconds to type a “Who…?” question.</p>
+    <button class="btn" id="go" type="button">I’m ${esc(asker.name)} · start the clock</button>`, 'mid');
+  $('#go').addEventListener('click', () => ask(asker));
+}
+
+/* ---------- 3. the asker types the question ---------- */
+function ask(asker) {
+  clearTimers(); G.phase = 'ask'; G.asker = asker;
+  show(`<p class="kicker gold">${esc(asker.name)}, your question</p>
+    <h1>Time to cause trouble.</h1>
+    <form id="askF" class="field glass" autocomplete="off">
+      <input id="askIn" type="text" maxlength="90" enterkeyhint="go" aria-label="Your question" placeholder="Who…?">
+      <button type="submit">Ask</button>
+    </form>
+    <p class="note">Out of time and the turn jumps to someone else.</p>`, 'top');
+  $('#askIn').focus();
+  startClock(ASK_SECS, () => {
+    if (G.phase !== 'ask') return;
+    blip(220, .25, 'sawtooth', .04);
+    hand(pick(others(asker)), `Time’s up, ${asker.name}.`);
+  });
+  $('#askF').addEventListener('submit', e => {
+    e.preventDefault();
+    const t = $('#askIn').value.trim().replace(/\s+/g, ' ');
+    if (!t) return;
+    $('#askIn').blur(); stopClock();
+    G.q = t; G.votes = new Map(); asker.asked++; G.round++; setRound();
+    const at = G.players.indexOf(asker);   // the asker votes first, then round the table
+    G.order = G.players.map((_, k) => G.players[(at + k) % G.players.length]); G.turn = 0;
+    blip(587, .15, 'triangle'); ballot();
+  });
+}
+
+/* ---------- 4. pass the phone, vote in secret ---------- */
+function pass() {
+  G.phase = 'pass';
+  const p = G.order[G.turn];
+  show(`<p class="kicker">Secret vote · ${G.turn + 1} of ${G.order.length}</p>
+    ${face(p.a, 'big')}
+    <h1>Pass the phone to ${esc(p.name)}.</h1>
+    <p class="dim">Nobody else looks.</p>
+    <button class="btn" id="go" type="button">I’m ${esc(p.name)} · show my ballot</button>`, 'mid');
+  $('#go').addEventListener('click', ballot);
+}
+function ballot() {
+  G.phase = 'ballot';
+  const p = G.order[G.turn], opts = others(p);
+  show(`<p class="kicker gold">${esc(p.name)}, your secret vote</p>
+    <h1>${esc(G.q)}</h1>
+    <div class="grid ${opts.length > 6 ? 'small' : ''}">${opts.map(o =>
+      `<button type="button" class="tile glass" data-i="${G.players.indexOf(o)}">${face(o.a)}${esc(o.name)}</button>`).join('')}</div>
+    <p class="note">One tap and your vote is locked.</p>`, opts.length > 6 ? 'top' : '');
+  stage.querySelectorAll('.tile').forEach(b => b.addEventListener('click', () => {
+    if (G.phase !== 'ballot') return;
+    G.votes.set(p, G.players[+b.dataset.i]); blip(740, .1);
+    if (++G.turn < G.order.length) pass(); else allIn();
+  }));
+}
+function allIn() {
+  G.phase = 'allin';
+  show(`<p class="kicker gold">All ${G.order.length} votes are in</p>
+    <h1>Put the phone where everyone can see.</h1>
+    <p class="dim">${esc(G.q)}</p>
+    <button class="btn" id="go" type="button">Reveal</button>`, 'mid');
+  $('#go').addEventListener('click', reveal);
+}
+
+/* ---------- 5. the verdict ---------- */
+function nextAsker(winners) { // the one voted always asks next; in a tie, the tied player who has asked least
+  const min = Math.min(...winners.map(p => p.asked));
+  return pick(winners.filter(p => p.asked === min));
+}
+function reveal() {
+  G.phase = 'reveal';
+  const tally = new Map();
+  for (const t of G.votes.values()) tally.set(t, (tally.get(t) || 0) + 1);
+  const top = Math.max(...tally.values());
+  const winners = G.players.filter(p => tally.get(p) === top);
+  const unanimous = winners.length === 1 && top >= G.players.length - 1; // everyone who could vote for them did
+  const next = nextAsker(winners), n = G.players.length;
+  show(`<p class="kicker" id="rk">Counting the votes<span class="dots"></span></p>
+    <h1>${esc(G.q)}</h1>
+    <div class="grid ${n > 6 ? 'small' : ''}">${G.players.map(p => `<div class="tile glass">${face(p.a)}${esc(p.name)}</div>`).join('')}</div>
+    <div id="after" class="list"></div>`, n > 6 ? 'top' : '');
+  const tiles = [...stage.querySelectorAll('.tile')];
+  // Roulette for suspense only: the hop sequence is built backwards from the real result.
+  const len = 12 + rnd(3), seq = new Array(len);
+  seq[len - 1] = G.players.indexOf(pick(winners));
+  for (let i = len - 2; i >= 0; i--) { let k; do { k = rnd(n); } while (k === seq[i + 1]); seq[i] = k; }
+  let i = 0, delay = 70;
+  const hop = () => {
+    tiles.forEach((t, k) => t.classList.toggle('hot', k === seq[i]));
+    blip(500 + seq[i] * 60, .05, 'square', .025);
+    if (++i < len) { delay *= 1.13; later(hop, delay); } else later(land, 450);
+  };
+  const land = () => {
+    tiles.forEach((t, k) => { t.classList.remove('hot'); t.classList.add(winners.includes(G.players[k]) ? 'win' : 'out'); });
+    blip(880, .3, 'triangle', .08);
+    const rk = $('#rk'); rk.classList.add('gold'); rk.textContent = 'The group has spoken';
+    const line = unanimous ? 'Absolutely brutal.' : winners.length === 2 ? 'Two suspects. One accusation.'
+      : winners.length > 2 ? 'Shared guilt. Nobody is innocent.' : pick(LINES);
+    $('#after').innerHTML = `${unanimous ? '<span class="badge">Unanimous</span>' : ''}
+      <p class="fade" style="font-weight:800;font-size:19px">${esc(line)}</p>
+      <p class="note fade">${esc(next.name)} gets revenge and asks next. Take your time, then hand over the phone.</p>
+      <button class="btn fade" id="go" type="button">I’m ${esc(next.name)} · ask next</button>`;
+    $('#go').addEventListener('click', () => ask(next));
+  };
+  later(hop, 500);
+}
+
+$('#quit').addEventListener('click', () => players());
+load();
+players();
+</script>
+</body>
+</html>
