@@ -132,7 +132,7 @@ const BOTS = ['Sarah', 'Mike', 'Emma', 'Daniel'];
 const ASK_SECS = 15, VOTE_SECS = 15, IDLE_SECS = 45;
 
 const G = {players: [], me: null, phase: 'join', asker: null, last: null, round: 0, q: '', votes: new Map(),
-  next: 'winner', tab: 'questions', deck: shuffle(QUESTIONS), dealt: [], note: ''};
+  tab: 'questions', deck: shuffle(QUESTIONS), dealt: [], note: ''};
 window.callRoom = G;
 
 /* ---------- timers and the countdown ---------- */
@@ -202,14 +202,8 @@ function drawLobby() {
   show(`<p class="kicker">Room · ${n} in</p>
     <h1>${n < 3 ? 'Waiting for friends<span class="dots"></span>' : 'Everyone ready?'}</h1>
     <div class="list">${G.players.map(p => `<div class="who glass">${av(p)}${esc(p.name)}${p.me ? '<small>You · host</small>' : ''}</div>`).join('')}</div>
-    <p class="note">Who asks the next question?</p>
-    <div class="seg glass" id="nextSeg">
-      <button type="button" data-v="winner" class="${G.next === 'winner' ? 'on' : ''}">The one voted</button>
-      <button type="button" data-v="rotate" class="${G.next === 'rotate' ? 'on' : ''}">Take turns</button>
-    </div>
     <button class="btn" id="startB" type="button" ${n < 3 ? 'disabled' : ''}>Start game</button>
-    <p class="note">${n < 4 ? 'Works with three, better with four or more.' : 'You ask the first question.'}</p>`);
-  stage.querySelectorAll('#nextSeg button').forEach(b => b.addEventListener('click', () => { G.next = b.dataset.v; drawLobby(); }));
+    <p class="note">${n < 4 ? 'Works with three, better with four or more.' : 'You ask the first question. After that, whoever gets voted asks next.'}</p>`);
   $('#startB').addEventListener('click', () => { blip(784, .2, 'triangle'); choose(G.me, ''); });
 }
 
@@ -300,9 +294,9 @@ function fewest() { // whoever has asked least, never the person who just asked
   const pool = others(G.last), min = Math.min(...pool.map(p => p.asked));
   return pick(pool.filter(p => p.asked === min));
 }
-function nextAsker(winners) {
-  if (G.next === 'rotate') return G.players[(G.players.indexOf(G.last) + 1) % G.players.length];
-  return winners.length === 1 && winners[0] !== G.last ? winners[0] : fewest();
+function nextAsker(winners) { // the one voted always asks next; in a tie, the tied player who has asked least
+  const min = Math.min(...winners.map(p => p.asked));
+  return pick(winners.filter(p => p.asked === min));
 }
 function reveal() {
   G.phase = 'reveal';
