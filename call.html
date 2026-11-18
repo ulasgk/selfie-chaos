@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e0d12">
+<title>Selfie Chaos · Call room</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+/* Click-through prototype of the camera-free voting game played alongside a video call.
+   One real player (this phone); the other players are pretend and act on timers.
+   Layout: everything is anchored to the bottom of the screen so the top stays free
+   for the floating call window. */
+:root{
+  --ink:#0e0d12; --text:#f6f4f1; --dim:rgba(246,244,241,.68); --accent:#ffd27a;
+  --glass:rgba(255,255,255,.07); --glass-strong:rgba(255,255,255,.13); --edge:rgba(255,255,255,.2);
+  --blur:blur(14px) saturate(1.3);
+  --font:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:
+    radial-gradient(60% 40% at 15% 0%,rgba(122,74,140,.5),transparent 70%),
+    radial-gradient(55% 40% at 100% 35%,rgba(40,110,120,.4),transparent 70%),
+    radial-gradient(70% 45% at 30% 100%,rgba(150,80,60,.35),transparent 70%),var(--ink);
+  background-attachment:fixed;color:var(--text);font-family:var(--font);font-size:15px;font-weight:500;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;border:0;cursor:pointer}
+.glass{background:var(--glass);border:1px solid var(--edge);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+
+#app{max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;
+  padding:calc(var(--st) + 12px) 16px calc(var(--sb) + 18px)}
+#top{display:flex;align-items:center;gap:8px}
+#brand{font-weight:800;font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+#round{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;padding:5px 11px;border-radius:99px}
+#restart{background:none;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--dim);padding:5px 4px}
+#clock{margin-top:12px;display:flex;align-items:center;gap:10px}
+#track{flex:1;height:4px;border-radius:9px;background:rgba(255,255,255,.14);overflow:hidden}
+#bar{height:100%;background:var(--accent);transform-origin:left;border-radius:9px}
+#secs{font-weight:800;font-size:13px;min-width:1.4em;text-align:right;font-variant-numeric:tabular-nums}
+#clock.low #secs{color:var(--accent)}
+
+#pip{position:fixed;top:calc(var(--st) + 64px);right:max(12px,calc(50vw - 228px));width:92px;height:140px;border-radius:14px;
+  background:linear-gradient(160deg,#2c3a36,#1b2422);border:1px solid var(--edge);color:var(--dim);font-size:10px;font-weight:700;
+  line-height:1.35;letter-spacing:.04em;z-index:5;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+
+#stage{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding-top:20px}
+.kicker{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0}
+.kicker.gold{color:var(--accent)}
+h1{font-weight:800;font-size:clamp(26px,7.4vw,34px);line-height:1.08;letter-spacing:-.02em;margin:0;text-wrap:balance}
+p{margin:0;line-height:1.45}
+.dim{color:var(--dim)}
+.note{font-size:12px;color:var(--dim)}
+.toast{align-self:flex-start;padding:8px 14px;border-radius:99px;font-size:13px;font-weight:700;color:var(--accent)}
+
+.btn{background:var(--text);color:var(--ink);font-weight:800;font-size:16px;border-radius:16px;padding:15px 20px;width:100%}
+.btn:disabled{opacity:.35}
+.field{display:flex;gap:8px;padding:6px;border-radius:18px}
+.field input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font:600 16px var(--font);padding:9px 10px;
+  -webkit-user-select:text;user-select:text}
+.field input::placeholder{color:var(--dim);font-weight:500}
+.field button{background:var(--text);color:var(--ink);font-weight:800;border-radius:13px;padding:10px 18px}
+
+.seg{display:flex;gap:2px;padding:3px;border-radius:99px;align-self:flex-start}
+.seg button{background:none;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--dim)}
+.seg button.on{background:var(--text);color:var(--ink)}
+
+.list{display:flex;flex-direction:column;gap:8px}
+.opt{display:flex;align-items:center;gap:12px;text-align:left;width:100%;padding:14px 16px;border-radius:16px;font-weight:700;font-size:16px;
+  transition:transform .12s,background .2s,opacity .2s}
+.opt:active{transform:scale(.98)}
+.opt:disabled{opacity:.4}
+.opt.mine{opacity:1;background:var(--glass-strong);border-color:var(--accent)}
+.opt small{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.av{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;
+  background:rgba(255,255,255,.14)}
+.who{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;font-weight:700;animation:in .3s ease-out}
+.who small{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tile{padding:16px 10px;border-radius:16px;text-align:center;font-weight:800;font-size:17px;
+  transition:opacity .35s,transform .35s,border-color .1s,background .1s}
+.tile.hot{border-color:var(--accent);background:rgba(255,210,122,.16)}
+.tile.out{opacity:.25;transform:scale(.96)}
+.tile.win{border-color:var(--accent);background:rgba(255,210,122,.2);color:var(--accent);transform:scale(1.04);
+  box-shadow:0 0 28px rgba(255,210,122,.3)}
+.badge{align-self:flex-start;background:var(--accent);color:var(--ink);font-weight:800;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;padding:6px 12px;border-radius:99px;animation:pop .4s cubic-bezier(.3,1.6,.5,1)}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+.fade{animation:in .35s ease-out}
+.dots::after{content:"";animation:dots 1.2s steps(4) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <span id="brand">Selfie Chaos</span>
+    <span id="round" class="glass" hidden></span>
+    <button id="restart" type="button" hidden>Restart</button>
+  </div>
+  <div id="clock" hidden><div id="track"><div id="bar"></div></div><span id="secs"></span></div>
+  <div id="stage"></div>
+</div>
+<button id="pip" type="button" hidden>CALL WINDOW<br>illustrative<br>tap to hide</button>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const rnd = n => Math.floor(Math.random() * n);
+const pick = a => a[rnd(a.length)];
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+/* Placeholder questions; the real deck is written separately. */
+const QUESTIONS = [
+  'Who would marry for money?', 'Who is the biggest flirt?', 'Who would survive a zombie apocalypse?',
+  'Who is always late?', 'Who has the worst taste in music?', 'Who would get arrested abroad?',
+  'Who texts their ex at 2am?', 'Who is secretly the smartest?', 'Who would win a reality show?',
+  'Who spends the most time on their phone?', 'Who tells the worst jokes?', 'Who is the drama queen?',
+  'Who would forget their own birthday?', 'Who is most likely to become famous?', 'Who gives the worst advice?',
+  'Who would cry at an advert?', 'Who is the worst driver?', 'Who would start a cult?',
+  'Who never pays the bill?', 'Who has the messiest room?', 'Who would lose their passport at the airport?',
+  'Who talks the most and says the least?', 'Who is the main character?', 'Who holds a grudge the longest?',
+];
+const LINES = ['No one is surprised.', 'You’ve been exposed.', 'That was personal.', 'The group has spoken.', 'Deny it all you want.'];
+const BOTS = ['Sarah', 'Mike', 'Emma', 'Daniel'];
+const ASK_SECS = 15, VOTE_SECS = 15, IDLE_SECS = 45;
+
+const G = {players: [], me: null, phase: 'join', asker: null, last: null, round: 0, q: '', votes: new Map(),
+  next: 'winner', tab: 'questions', deck: shuffle(QUESTIONS), dealt: [], note: ''};
+window.callRoom = G;
+
+/* ---------- timers and the countdown ---------- */
+let timers = [];
+const later = (f, ms) => { const id = setTimeout(f, ms); timers.push(id); return id; };
+const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+let clock = null;
+function startClock(sec, onEnd) { clock = {end: performance.now() + sec * 1000, dur: sec * 1000, onEnd}; $('#clock').hidden = false; drawClock(); }
+function stopClock() { clock = null; $('#clock').hidden = true; }
+function drawClock() {
+  if (!clock) return;
+  const left = clock.end - performance.now();
+  $('#bar').style.transform = `scaleX(${Math.max(0, left / clock.dur)})`;
+  $('#secs').textContent = Math.ceil(Math.max(0, left) / 1000);
+  $('#clock').classList.toggle('low', left < 5000);
+  if (left <= 0) { const f = clock.onEnd; stopClock(); f(); }
+}
+setInterval(drawClock, 100);
+
+let ac;
+function blip(f, d = .12, type = 'sine', g = .06) {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const o = ac.createOscillator(), v = ac.createGain();
+    o.type = type; o.frequency.value = f; v.gain.value = g;
+    v.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + d);
+    o.connect(v).connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
+  } catch (e) {}
+}
+
+const stage = $('#stage');
+const show = html => { stage.innerHTML = html; };
+const av = p => `<span class="av">${esc(p.name[0].toUpperCase())}</span>`;
+const others = p => G.players.filter(o => o !== p);
+function setRound() { const r = $('#round'); r.hidden = !G.round; r.textContent = 'ROUND ' + String(G.round).padStart(2, '0'); }
+
+/* ---------- 1. join ---------- */
+function join() {
+  show(`<p class="kicker">Your friends invited you</p>
+    <h1>Find out what they really think of you.</h1>
+    <form id="joinF" class="field glass" autocomplete="off">
+      <input id="name" type="text" maxlength="14" enterkeyhint="go" aria-label="Your name" placeholder="Your first name or nickname">
+      <button type="submit">Join</button>
+    </form>
+    <p class="note">No account. Prototype: the other players here are pretend.</p>`);
+  $('#joinF').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('#name').value.trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    blip(660);
+    G.me = {name, me: true, asked: 0}; G.players = [G.me];
+    $('#restart').hidden = false; $('#pip').hidden = false;
+    lobby();
+  });
+}
+
+/* ---------- 2. lobby ---------- */
+function lobby() {
+  G.phase = 'lobby';
+  BOTS.forEach((n, i) => later(() => { G.players.push({name: n, asked: 0}); blip(520 + i * 60, .08); drawLobby(); }, 900 + i * 900));
+  drawLobby();
+}
+function drawLobby() {
+  if (G.phase !== 'lobby') return;
+  const n = G.players.length;
+  show(`<p class="kicker">Room · ${n} in</p>
+    <h1>${n < 3 ? 'Waiting for friends<span class="dots"></span>' : 'Everyone ready?'}</h1>
+    <div class="list">${G.players.map(p => `<div class="who glass">${av(p)}${esc(p.name)}${p.me ? '<small>You · host</small>' : ''}</div>`).join('')}</div>
+    <p class="note">Who asks the next question?</p>
+    <div class="seg glass" id="nextSeg">
+      <button type="button" data-v="winner" class="${G.next === 'winner' ? 'on' : ''}">The one voted</button>
+      <button type="button" data-v="rotate" class="${G.next === 'rotate' ? 'on' : ''}">Take turns</button>
+    </div>
+    <button class="btn" id="startB" type="button" ${n < 3 ? 'disabled' : ''}>Start game</button>
+    <p class="note">${n < 4 ? 'Works with three, better with four or more.' : 'You ask the first question.'}</p>`);
+  stage.querySelectorAll('#nextSeg button').forEach(b => b.addEventListener('click', () => { G.next = b.dataset.v; drawLobby(); }));
+  $('#startB').addEventListener('click', () => { blip(784, .2, 'triangle'); choose(G.me, ''); });
+}
+
+/* ---------- 3. the asker chooses ---------- */
+function deal() { if (G.deck.length < 3) G.deck = G.deck.concat(shuffle(QUESTIONS)); G.dealt = G.deck.splice(0, 3); }
+function choose(asker, note) {
+  clearTimers(); G.phase = 'choose'; G.asker = asker; G.note = note || '';
+  startClock(ASK_SECS, () => timeUp(asker));
+  if (asker.me) { deal(); drawPicker(); return; }
+  show(`${G.note ? `<p class="toast glass fade">${esc(G.note)}</p>` : ''}
+    <p class="kicker">Next question</p>
+    <h1>${esc(asker.name)} is choosing<span class="dots"></span></h1>
+    <p class="dim">Fifteen seconds, or the turn moves on.</p>`);
+  // A pretend player usually picks in time, occasionally runs out the clock.
+  if (Math.random() < .88) later(() => vote(Math.random() < .25 ? pick(QUESTIONS) : (deal(), pick(G.dealt))), 2500 + rnd(6000));
+}
+function drawPicker() {
+  const ask = G.tab === 'ask';
+  show(`${G.note ? `<p class="toast glass fade">${esc(G.note)}</p>` : ''}
+    <p class="kicker gold">Your turn to ask</p>
+    <h1>${ask ? 'Type your question.' : 'Pick one.'}</h1>
+    ${ask ? `<form id="askF" class="field glass" autocomplete="off">
+        <input id="askIn" type="text" maxlength="80" enterkeyhint="go" aria-label="Your question" placeholder="Who…?">
+        <button type="submit">Ask</button></form>`
+      : `<div class="list">${G.dealt.map((q, i) => `<button type="button" class="opt glass" data-i="${i}">${esc(q)}</button>`).join('')}</div>
+        <button type="button" id="shuf" class="note" style="background:none;align-self:flex-start;padding:4px 0">Deal three others</button>`}
+    <div class="seg glass" id="tabs">
+      <button type="button" data-v="questions" class="${ask ? '' : 'on'}">Questions</button>
+      <button type="button" data-v="ask" class="${ask ? 'on' : ''}">Ask</button>
+    </div>`);
+  stage.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => { G.tab = b.dataset.v; G.note = ''; drawPicker(); }));
+  if (ask) {
+    $('#askIn').focus();
+    $('#askF').addEventListener('submit', e => { e.preventDefault(); const t = $('#askIn').value.trim().replace(/\s+/g, ' '); if (t) vote(t); });
+  } else {
+    stage.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => vote(G.dealt[+b.dataset.i])));
+    $('#shuf').addEventListener('click', () => { deal(); G.note = ''; drawPicker(); });
+  }
+}
+function timeUp(asker) {
+  if (G.phase !== 'choose') return;
+  const next = pick(others(asker));
+  blip(220, .25, 'sawtooth', .04);
+  choose(next, `Time’s up. ${next.me ? 'You are' : next.name + ' is'} asking now.`);
+}
+
+/* ---------- 4. secret vote ---------- */
+function vote(q) {
+  if (G.phase !== 'choose') return;
+  clearTimers(); G.phase = 'vote'; G.q = q; G.votes = new Map();
+  G.asker.asked++; G.last = G.asker; G.round++; setRound();
+  blip(587, .15, 'triangle');
+  startClock(VOTE_SECS, closeVote);
+  show(`<p class="kicker">${G.asker.me ? 'You ask' : esc(G.asker.name) + ' asks'} · secret vote</p>
+    <h1>${esc(q)}</h1>
+    <div class="list" id="opts">${others(G.me).map(p =>
+      `<button type="button" class="opt glass" data-i="${G.players.indexOf(p)}">${av(p)}${esc(p.name)}</button>`).join('')}</div>
+    <p class="note" id="count"></p>`);
+  stage.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => {
+    stage.querySelectorAll('.opt').forEach(o => { o.disabled = true; });
+    b.classList.add('mine'); b.insertAdjacentHTML('beforeend', '<small>Your vote</small>');
+    blip(740, .1); cast(G.me, G.players[+b.dataset.i]);
+  }));
+  // Pretend players lean towards one person so results are not pure noise.
+  const lean = pick(G.players);
+  others(G.me).forEach(p => {
+    if (Math.random() < .06) return; // now and then someone does not vote
+    const target = lean !== p && Math.random() < .55 ? lean : pick(others(p));
+    later(() => cast(p, target), 1200 + rnd(7500));
+  });
+  drawCount();
+}
+function drawCount() { const c = $('#count'); if (c) c.textContent = `${G.votes.size} of ${G.players.length} voted · nobody sees who picked whom`; }
+function cast(voter, target) {
+  if (G.phase !== 'vote' || G.votes.has(voter)) return;
+  G.votes.set(voter, target); drawCount();
+  if (G.votes.size === G.players.length) { stopClock(); later(closeVote, 600); }
+}
+function closeVote() {
+  if (G.phase !== 'vote') return;
+  clearTimers(); stopClock();
+  if (G.votes.size < 2) { G.phase = 'choose'; choose(fewest(), 'Not enough votes. New question.'); return; }
+  reveal();
+}
+
+/* ---------- 5. the verdict ---------- */
+function fewest() { // whoever has asked least, never the person who just asked
+  const pool = others(G.last), min = Math.min(...pool.map(p => p.asked));
+  return pick(pool.filter(p => p.asked === min));
+}
+function nextAsker(winners) {
+  if (G.next === 'rotate') return G.players[(G.players.indexOf(G.last) + 1) % G.players.length];
+  return winners.length === 1 && winners[0] !== G.last ? winners[0] : fewest();
+}
+function reveal() {
+  G.phase = 'reveal';
+  const tally = new Map();
+  for (const t of G.votes.values()) tally.set(t, (tally.get(t) || 0) + 1);
+  const top = Math.max(...tally.values());
+  const winners = G.players.filter(p => tally.get(p) === top);
+  const unanimous = winners.length === 1 && top === G.votes.size && top >= 3;
+  const next = nextAsker(winners);
+  show(`<p class="kicker" id="rk">Counting the votes<span class="dots"></span></p>
+    <h1>${esc(G.q)}</h1>
+    <div class="grid">${G.players.map(p => `<div class="tile glass">${esc(p.name)}</div>`).join('')}</div>
+    <div id="after" class="list"></div>`);
+  const tiles = [...stage.querySelectorAll('.tile')], n = G.players.length;
+  // Roulette for suspense only: the hop sequence is built backwards from the real result.
+  const len = 12 + rnd(3), seq = new Array(len);
+  seq[len - 1] = G.players.indexOf(pick(winners));
+  for (let i = len - 2; i >= 0; i--) { let k; do { k = rnd(n); } while (k === seq[i + 1]); seq[i] = k; }
+  let i = 0, delay = 70;
+  const hop = () => {
+    tiles.forEach((t, k) => t.classList.toggle('hot', k === seq[i]));
+    blip(500 + seq[i] * 60, .05, 'square', .025);
+    if (++i < len) { delay *= 1.13; later(hop, delay); } else later(land, 450);
+  };
+  const land = () => {
+    tiles.forEach((t, k) => { t.classList.remove('hot'); t.classList.add(winners.includes(G.players[k]) ? 'win' : 'out'); });
+    blip(880, .3, 'triangle', .08);
+    const rk = $('#rk'); rk.classList.add('gold'); rk.textContent = 'The group has spoken';
+    const line = unanimous ? 'Absolutely brutal.' : winners.length === 2 ? 'Two suspects. One accusation.'
+      : winners.length > 2 ? 'Shared guilt. Nobody is innocent.' : pick(LINES);
+    const who = next.me ? 'You ask' : esc(next.name) + ' asks';
+    $('#after').innerHTML = `${unanimous ? '<span class="badge">Unanimous</span>' : ''}
+      <p class="fade" style="font-weight:800;font-size:19px">${esc(line)}</p>
+      ${next.me ? '<button class="btn fade" id="nextB" type="button">Ask next</button>'
+        : `<p class="note fade">${who} the next question. Waiting for their tap<span class="dots"></span></p>`}`;
+    if (next.me) {
+      $('#nextB').addEventListener('click', () => choose(next, ''));
+      // Nobody is rushed, but a player who has wandered off does not freeze the room.
+      later(() => { const o = pick(others(next)); choose(o, `You were away. ${o.name} is asking now.`); }, IDLE_SECS * 1000);
+    } else later(() => choose(next, ''), 4500 + rnd(2500));
+  };
+  later(hop, 500);
+}
+
+$('#restart').addEventListener('click', () => location.reload());
+$('#pip').addEventListener('click', () => { $('#pip').hidden = true; });
+join();
+</script>
+</body>
+</html>
