@@ -687,7 +687,7 @@ async function startCamera() {
 $('#goCam').addEventListener('click', () => { blip(440, .05); startCamera(); });
 /* Demo without a camera: a stock photo of friends, scanned by the real face scanner.
    Tap the player count to switch photo. Falls back to cartoon faces if it cannot load. */
-const PHOTOS = ['1703995886184-8a678fa16980', '1772723246368-05f6037930d1', '1560220980-16ad88bd91df']
+const PHOTOS = ['1560220980-16ad88bd91df', '1772723246368-05f6037930d1']
   .map(id => `https://images.unsplash.com/photo-${id}?w=900&q=70&fit=crop&ar=9:19.5&crop=faces`);
 S.photoI = 0;
 async function startDemo() {
