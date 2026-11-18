@@ -332,26 +332,58 @@ function detectPhoto(now) {
   if (!img.complete || !img.naturalWidth) return null;
   return detectEl(img, img.naturalWidth, img.naturalHeight, false, now);
 }
+/* The face finder shrinks whatever picture it is given to a small square. In a tall
+   phone frame that makes three or four faces too small to find. So it is handed only
+   the part of the picture that is on screen, and within that only the band the faces
+   are in, which keeps each face large enough. */
+const band = {c: null, h: 0, scanAt: 0, flip: 0, cv: document.createElement('canvas')};
 function detectEl(el, vw, vh, mirror, now) {
   if (!landmarker) return null;
-  let res;
-  try { res = landmarker.detectForVideo(el, now); } catch (e) { return null; }
   const sc = Math.max(W / vw, H / vh), ox = (W - vw * sc) / 2, oy = (H - vh * sc) / 2;
+  const visW = Math.min(vw, W / sc), visH = Math.min(vh, H / sc), visX = (vw - visW) / 2, visY = (vh - visH) / 2;
+  let bh = visH, by = visY;
+  const minH = visW * 1.25;
+  if (visH > minH * 1.05) {
+    const seen = S.tracks.filter(t => now - t.lastSeen < 450);
+    if (seen.length) { // follow the faces; grow the band if they are spread out vertically
+      let top = Infinity, bot = -Infinity;
+      for (const t of seen) { const cy = (t.ty - oy) / sc, hh = t.th / sc / 2; top = Math.min(top, cy - hh); bot = Math.max(bot, cy + hh); }
+      const wantC = (top + bot) / 2, wantH = Math.max(minH, bot - top + visW * .5);
+      band.c = band.c == null ? wantC : band.c + (wantC - band.c) * .2;
+      band.h = band.h ? band.h + (wantH - band.h) * .2 : wantH;
+    } else {           // nobody yet: look in the upper part, then the lower part, in turn
+      if (now - band.scanAt > 700) { band.scanAt = now; band.flip = 1 - band.flip; }
+      band.c = visY + visH * (band.flip ? .64 : .38); band.h = minH;
+    }
+    bh = Math.min(visH, Math.ceil(band.h / 32) * 32);
+    by = Math.max(visY, Math.min(visY + visH - bh, band.c - bh / 2));
+  }
+  const k = Math.min(1, 640 / Math.max(visW, bh)), cv = band.cv;
+  const cw = Math.round(visW * k), ch = Math.round(bh * k);
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+  let res;
+  try {
+    cv.getContext('2d').drawImage(el, visX, by, visW, bh, 0, 0, cw, ch);
+    res = landmarker.detectForVideo(cv, now);
+  } catch (e) { return null; }
+  S.band = {by, bh, visW, visH, faces: (res.faceLandmarks || []).length};
   return (res.faceLandmarks || []).map((lm, i) => {
     let x0 = 1, x1 = 0, y0 = 1, y1 = 0;
     for (const p of lm) { if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
     const bs = {};
     for (const c of (res.faceBlendshapes && res.faceBlendshapes[i] ? res.faceBlendshapes[i].categories : [])) bs[c.categoryName] = c.score;
     const a = lm[33], b = lm[263];
-    let tilt = Math.abs(Math.atan2((b.y - a.y) * vh, (b.x - a.x) * vw) * 180 / Math.PI);
+    let tilt = Math.abs(Math.atan2((b.y - a.y) * bh, (b.x - a.x) * visW) * 180 / Math.PI);
     if (tilt > 90) tilt = 180 - tilt;
+    const fx = (visX + (x0 + x1) / 2 * visW) / vw, fy = (by + (y0 + y1) / 2 * bh) / vh;
     return {
-      x: ox + (mirror ? 1 - (x0 + x1) / 2 : (x0 + x1) / 2) * vw * sc, y: oy + (y0 + y1) / 2 * vh * sc,
-      w: (x1 - x0) * vw * sc * 1.2, h: (y1 - y0) * vh * sc * 1.2,
+      x: ox + (mirror ? 1 - fx : fx) * vw * sc, y: oy + fy * vh * sc,
+      w: (x1 - x0) * visW * sc * 1.2, h: (y1 - y0) * bh * sc * 1.2,
       smile: ((bs.mouthSmileLeft || 0) + (bs.mouthSmileRight || 0)) / 2, mouth: bs.jawOpen || 0,
       brows: Math.max(bs.browInnerUp || 0, ((bs.browOuterUpLeft || 0) + (bs.browOuterUpRight || 0)) / 2), tilt,
     };
-  });
+  }).filter((d, i, all) => // one face reported twice counts once: no ghost players
+    !all.slice(0, i).some(o => Math.hypot(o.x - d.x, o.y - d.y) < .45 * Math.max(o.w, d.w)));
 }
 /* Demo: wobbling stand-in faces with made-up signals, so the game can be tried without a camera. */
 let demoMood = [], demoMoodAt = -1e9;
