@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#17111f">
+<title>Selfie Chaos</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* Layout: full-screen mirrored selfie; thin status bar on top; question bubbles
+   rise from the bottom; during a reveal the bubbles give way to a result card. */
+:root{
+  --ink:#17111f; --paper:#fff8ec; --sun:#ffc533; --pink:#ff6b9a; --mint:#3ddbb4; --sky:#6cc0ff;
+  --glass:rgba(23,17,31,.74); --line:rgba(255,248,236,.22);
+  --display:"Bricolage Grotesque","Avenir Next Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(--paper);
+  font-family:var(--body);font-size:15px;-webkit-user-select:none;user-select:none;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;border:0;cursor:pointer}
+button:focus-visible{outline:3px solid var(--paper);outline-offset:2px}
+
+#cam,#demoImg{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#cam{transform:scaleX(-1)}
+#demoBg{position:fixed;inset:0;background:radial-gradient(120% 80% at 50% 20%,#4a2d63 0%,#241733 55%,var(--ink) 100%)}
+#shade{position:fixed;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(23,17,31,.55) 0,transparent 16%,transparent 58%,rgba(23,17,31,.7) 100%)}
+
+/* top bar */
+#bar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;
+  padding:calc(var(--st) + 10px) 14px 8px;z-index:5}
+.brand{font-family:var(--display);font-weight:800;font-size:17px;letter-spacing:.02em;line-height:1}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--glass);border:1px solid var(--line);
+  border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  font-variant-numeric:tabular-nums}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--pink);animation:blink 1.4s infinite}
+#newBtn{margin-left:auto;background:var(--glass);border:1px solid var(--line);border-radius:99px;
+  padding:7px 12px;font-size:12px;font-weight:600}
+@keyframes blink{50%{opacity:.25}}
+
+/* faces */
+#faces{position:fixed;inset:0;pointer-events:none;z-index:2}
+.face{position:absolute;left:0;top:0;will-change:transform}
+.ring{position:absolute;inset:0;border:2px solid rgba(255,248,236,.38);border-radius:34%;transition:border-color .3s,box-shadow .3s}
+.face.lost .ring{opacity:.2}
+body[data-state="scan"] .face.in .ring{border-color:var(--sun);box-shadow:0 0 0 4px rgba(255,197,51,.25);animation:pulse .5s infinite alternate}
+body[data-state="reveal"] .face.in .ring{border-color:var(--paper)}
+@keyframes pulse{to{transform:scale(1.06)}}
+.emoji{position:absolute;inset:8%;display:grid;place-items:center;border-radius:50%;background:#ffd98a;
+  font-size:min(22vw,96px);line-height:1}
+
+.label{position:absolute;left:0;top:0;max-width:min(46vw,250px);text-align:center;will-change:transform;
+  display:flex;flex-direction:column;align-items:center;gap:5px;animation:pop .45s cubic-bezier(.2,1.6,.4,1) both}
+.label .tag{font-family:var(--display);font-weight:800;font-size:15px;line-height:1.05;letter-spacing:.02em;
+  background:var(--paper);color:var(--ink);padding:6px 11px;border-radius:10px;transform:rotate(-2deg);text-wrap:balance}
+.label.win .tag{background:var(--sun)}
+.label .line{background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:6px 9px;
+  font-size:13px;line-height:1.25;text-wrap:balance}
+.label.think .line{background:var(--paper);color:var(--ink);border:0;border-radius:18px;font-style:italic;
+  padding:9px 12px;font-size:14px;position:relative}
+.label.think .line::after{content:"";position:absolute;left:50%;bottom:-13px;width:9px;height:9px;margin-left:-4px;
+  border-radius:50%;background:var(--paper);box-shadow:5px 9px 0 -2px var(--paper)}
+@keyframes pop{from{opacity:0;scale:.4}to{opacity:1;scale:1}}
+
+/* scan sweep */
+#scan{position:fixed;left:0;right:0;top:0;height:22vh;z-index:3;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(255,197,51,.28) 80%,var(--sun) 98%,transparent);
+  animation:sweep .75s linear infinite alternate}
+@keyframes sweep{from{transform:translateY(-22vh)}to{transform:translateY(100vh)}}
+#chip{position:fixed;top:calc(var(--st) + 52px);left:50%;transform:translateX(-50%);z-index:4;white-space:nowrap;
+  background:var(--sun);color:var(--ink);font-family:var(--display);font-weight:800;font-size:15px;
+  padding:7px 14px;border-radius:99px;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+
+/* bubbles */
+#dock{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:0 12px calc(var(--sb) + 14px);
+  display:flex;flex-direction:column;gap:10px;transition:transform .35s ease,opacity .25s}
+body:not([data-state="play"]) #dock{transform:translateY(110%);opacity:0;pointer-events:none}
+#hint{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:0 4px;
+  font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#left{font-variant-numeric:tabular-nums;opacity:.8}
+#tray{display:flex;flex-wrap:wrap;gap:9px;justify-content:center}
+.bubble{flex:1 1 44%;min-width:0;max-width:340px;display:flex;align-items:center;gap:8px;text-align:left;
+  border-radius:22px;padding:13px 14px;color:var(--ink);font-family:var(--display);font-weight:800;font-size:16px;
+  line-height:1.08;box-shadow:0 5px 0 rgba(0,0,0,.28);animation:rise .6s cubic-bezier(.2,1.5,.4,1) both;
+  transition:opacity .25s,filter .25s}
+.bubble span:first-child{font-size:22px;line-height:1}
+.bubble:nth-child(4n+1){background:var(--sun)} .bubble:nth-child(4n+2){background:var(--pink)}
+.bubble:nth-child(4n+3){background:var(--mint)} .bubble:nth-child(4n){background:var(--sky)}
+.bubble:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.28)}
+#dock.locked .bubble{opacity:.38;filter:grayscale(.7);pointer-events:none}
+@keyframes rise{from{transform:translateY(160%) scale(.8);opacity:0}to{transform:none;opacity:1}}
+#empty{text-align:center;padding:10px 4px;font-family:var(--display);font-weight:800;font-size:18px}
+
+/* result card */
+#card{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--glass);backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);border-radius:24px 24px 0 0;
+  padding:14px 18px calc(var(--sb) + 16px);display:flex;flex-direction:column;gap:7px;
+  animation:cardUp .4s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes cardUp{from{transform:translateY(100%)}to{transform:none}}
+#strip{align-self:flex-start;background:var(--pink);color:var(--ink);font-weight:600;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:5px}
+#qt{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;opacity:.75}
+#head{font-family:var(--display);font-weight:800;font-size:clamp(20px,5.6vw,27px);line-height:1.08;margin:0;text-wrap:balance}
+#meter{font-family:var(--display);font-weight:800;font-size:54px;line-height:1;color:var(--sun);font-variant-numeric:tabular-nums}
+#why{font-size:13px;font-style:italic;opacity:.85;margin:0}
+#twist{font-size:15px;font-weight:600;color:var(--sun);margin:2px 0 0;animation:pop .4s cubic-bezier(.2,1.6,.4,1) both;transform-origin:left}
+#next{align-self:flex-end;background:var(--paper);color:var(--ink);font-family:var(--display);font-weight:800;
+  font-size:15px;border-radius:99px;padding:9px 18px;margin-top:4px}
+
+/* start screen */
+#start{position:fixed;inset:0;z-index:9;background:var(--ink);display:flex;flex-direction:column;justify-content:center;
+  gap:16px;padding:calc(var(--st) + 24px) max(24px,env(safe-area-inset-left,0px)) calc(var(--sb) + 24px)}
+#start h1{font-family:var(--display);font-weight:800;font-size:clamp(52px,17vw,104px);line-height:.86;margin:0;letter-spacing:-.02em}
+#start h1 em{font-style:normal;color:var(--sun);display:block;transform:rotate(-3deg);transform-origin:left}
+#start p{margin:0;max-width:34ch;font-size:16px;line-height:1.4}
+.go{background:var(--sun);color:var(--ink);font-family:var(--display);font-weight:800;font-size:20px;
+  border-radius:99px;padding:15px 24px;align-self:flex-start;box-shadow:0 5px 0 rgba(0,0,0,.35)}
+.alt{background:none;text-decoration:underline;align-self:flex-start;padding:4px 0;font-size:14px;opacity:.85}
+#status{min-height:2.8em;font-size:14px;color:var(--pink)}
+.fine{font-size:12px!important;opacity:.6}
+
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01s!important;transition-duration:.01s!important}}
+</style>
+</head>
+<body data-state="start">
+<video id="cam" playsinline muted autoplay></video>
+<img id="demoImg" alt="" crossorigin="anonymous" hidden>
+<div id="demoBg" hidden></div>
+<div id="shade"></div>
+<div id="faces"></div>
+<div id="scan" hidden></div>
+<div id="chip" hidden></div>
+
+<div id="bar">
+  <span class="brand">SELFIE CHAOS</span>
+  <span class="pill" id="count"><i></i><span>Live</span></span>
+  <button id="newBtn" type="button">New session</button>
+</div>
+
+<div id="dock" class="locked">
+  <div id="hint"><span id="hintText">Looking for faces…</span><span id="left"></span></div>
+  <div id="tray"></div>
+</div>
+
+<div id="card" hidden>
+  <span id="strip" hidden></span>
+  <span id="qt"></span>
+  <p id="head"></p>
+  <div id="meter" hidden></div>
+  <p id="why" hidden></p>
+  <p id="twist" hidden></p>
+  <button id="next" type="button" hidden>Next ➜</button>
+</div>
+
+<div id="start">
+  <h1>Selfie <em>Chaos</em></h1>
+  <p>Grab a friend, get both faces in the frame, and tap a question to discover your ridiculous truth.</p>
+  <button class="go" id="goCam" type="button">Start camera</button>
+  <button class="alt" id="goDemo" type="button">Try it without a camera</button>
+  <div id="status" role="status"></div>
+  <p class="fine">Every result is made up. Nothing is recorded and nothing leaves this phone.</p>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const rnd = a => a[Math.floor(Math.random() * a.length)];
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+/* ---------- Comedy library ----------
+   sig: what the scanner looks at to choose the "winner"
+        smile | mouth | quiet | brows | tilt | wiggly | still | close | far | (none = random)
+   why: the evidence line, shown only when the signal was really seen
+   v:   variants. h headline, w winner [tag, line], o others pool, x twist, n [min,max] players
+   all: everybody draws from the pool (no winner)                                   */
+const Q = [
+{id:'adult',e:'👶',t:"Who's the Adult Here?",sig:'still',why:"Sat still for the whole scan. That is basically a pension plan.",v:[
+ {h:"{n} people detected. One adult.",w:["THE ADULT","Pays bills. Owns a folder for documents."],o:[["DEPENDENT","Calls mum when the washing machine makes a noise."],["DEPENDENT","Believes cereal is a dinner."],["UNDER SUPERVISION","Not allowed near the good scissors."],["WORK IN PROGRESS","An ongoing experiment in human development."]],x:"Update: the adult also had cereal for dinner."},
+ {h:"Adult found. Barely.",w:["ADULT (PROVISIONAL)","Has a favourite ring on the cooker."],o:[["TALL CHILD","Googles how long to boil an egg. Every time."],["TALL CHILD","Thinks a boiler is a kind of dog."],["INTERN AT LIFE","4% battery. No charger. No plan."]],x:"Correction: licence revoked until someone files a tax return."}]},
+{id:'rich',e:'💰',t:"Who Will Be Rich?",sig:'close',why:"Leaned closest to the camera. Investors call that confidence.",v:[
+ {h:"One future billionaire in the frame.",w:["BILLIONAIRE","Buys an island. Names it after themselves."],o:[["ASKS FOR A LOAN","Starts the message with 'heyyy stranger'."],["ISLAND GUEST","Invited once. Not invited again."],["EMPLOYEE #1","Paid in exposure."]],x:"Plot twist: the money came from selling the group chat screenshots."},
+ {h:"Fortune detected. It is unevenly distributed.",w:["RICH BY 2041","Accidentally invents something while procrastinating."],o:[["STILL SPLITTING THE BILL","Down to the cent."],["KNEW THEM BEFORE","Will mention it at every party."],["HAS A PODCAST ABOUT IT","Four listeners. Two are family."]],x:"Small print: fortune lost in 2042 on a restaurant for dogs."}]},
+{id:'hiding',e:'🤫',t:"Who's Hiding Something?",sig:'smile',why:"Grinned during the scan. Innocent people do not grin.",v:[
+ {h:"Secret detected.",w:["HIDING SOMETHING","Ate the last slice and blamed the dog."],o:[["KNOWS EVERYTHING","Is saving it for the right moment."],["SUSPECTS NOTHING","Still thinks the dog did it."],["HAS A DIFFERENT SECRET","Unrelated. Much worse."]],x:"There is no dog."},
+ {h:"Someone here has a secret second life.",w:["DOUBLE LIFE","Has a separate account just for restaurant reviews."],o:[["FOLLOWS THE ACCOUNT","Has no idea who runs it."],["GOT A ONE-STAR REVIEW","From the person next to them."],["BLISSFULLY UNAWARE","As usual."]],x:"The reviews are mostly about your cooking."}]},
+{id:'villain',e:'😈',t:"Who's the Villain?",sig:'brows',why:"Raised an eyebrow at the scanner. Textbook villain behaviour.",v:[
+ {h:"Every story needs a villain.",w:["THE MASTERMIND","Has a plan. Has a cat to stroke while explaining it."],o:[["THE ASSISTANT","Accidentally posts the plan online."],["THE HERO","Arrives late. Trips on the cat."],["THE HOSTAGE","Quite enjoying the snacks, actually."]],x:"The plan was to get everyone to leave by 10 pm. It worked."},
+ {h:"Villain origin story located.",w:["VILLAIN","Turned evil when someone spoiled the series finale."],o:[["THE ONE WHO SPOILED IT","Would do it again."],["SIDEKICK","Only here for the cape."],["NARRATOR","Saw it coming. Said nothing."]],x:"Evil lair is a studio flat with good natural light."}]},
+{id:'betray',e:'🗡️',t:"Who Would Betray the Group?",sig:'wiggly',why:"Fidgeted during the loyalty scan. Loyal people do not fidget.",v:[
+ {h:"Betrayal forecast: likely.",w:["THE TRAITOR","Would sell the group for a decent sandwich."],o:[["LOYAL TO THE END","Would die for friendship. Would rather not."],["NEGOTIATING","Wants to know what kind of sandwich."],["ALREADY BETRAYED","Has not noticed yet."]],x:"The sandwich was not even that good."},
+ {h:"One of you has already switched sides.",w:["DOUBLE AGENT","Shares the group chat with their mum."],o:[["THE LEAK'S VICTIM","Mum knows about the incident."],["UNBOTHERED","Mum likes them best anyway."],["TRIPLE AGENT","Shares the mum's replies with everyone else."]],x:"Mum has opinions. They are not flattering."}]},
+{id:'think',e:'💭',t:"What Are They Really Thinking?",style:'think',v:[
+ {n:[2,2],h:"Live thought transcript.",w:["","“We are best friends.”"],o:[["","“They still owe me 12 euros.”"]],x:"Follow-up thought: “With interest, it is 14.”"},
+ {h:"Live thought transcript.",w:["","“I look amazing right now.”"],o:[["","“Did I lock the door?”"],["","“What if pigeons have meetings?”"],["","“I could eat again.”"],["","“Everyone can tell I am not listening.”"]],x:"Scanner note: nobody was thinking about the person talking."},
+ {h:"Thoughts intercepted.",w:["","“I should say something clever.”"],o:[["","“Please nobody say anything clever.”"],["","“Is that my good side?”"],["","“I have had this song stuck in my head since March.”"]],x:"The song was the washing machine jingle."}]},
+{id:'zombie',e:'🧟',t:"Who Survives the Zombies?",sig:'wiggly',why:"Moved the most during the scan. In an apocalypse, cardio wins.",v:[
+ {h:"Zombie apocalypse survival report.",w:["SURVIVES 8 YEARS","Becomes leader of a small, well-organised fort."],o:[["BITTEN ON DAY ONE","Was taking a selfie with the zombie."],["LASTS A WEEK","Went back for the phone charger."],["BECOMES A ZOMBIE","Honestly, more relaxed now."]],x:"The fort has a strict no-selfie policy."},
+ {h:"Outbreak simulation complete.",w:["LAST ONE STANDING","Survives entirely on tinned peaches and spite."],o:[["FIRST TO GO","Tried to reason with them."],["OPENED THE DOOR","'It sounded like a normal knock.'"],["HID IN THE WRONG CUPBOARD","It was already occupied."]],x:"Cause of the outbreak: one of you reheated rice twice."}]},
+{id:'main',e:'🎬',t:"Who's the Main Character?",sig:'tilt',why:"Tilted their head to find the light. Only main characters know their angle.",v:[
+ {h:"Casting complete.",w:["THE STAR","Gets the slow-motion entrance and the soundtrack."],o:[["EXTRA","Eliminated in episode one."],["COMIC RELIEF","Two lines. Both about food."],["THE BEST FRIEND","Exists only to say 'go get them'."]],x:"The show is cancelled after one season. The extra gets a spin-off."},
+ {h:"One lead role. {m} supporting.",w:["PROTAGONIST","Stares out of rainy windows professionally."],o:[["BACKGROUND PERSON","Pretending to drink from an empty cup."],["THE RIVAL","Better hair. Worse personality."],["UNCREDITED","Listed as 'Person at Bus Stop'."]],x:"Reviews say the bus stop scene was the highlight."}]},
+{id:'brain',e:'🧠',t:"Who Has More Brain Cells?",sig:'quiet',why:"Kept their mouth shut during the scan. Smartest thing anyone did today.",v:[
+ {h:"Seven brain cells detected in total.",w:["HAS SIX OF THEM","Uses them mainly to remember song lyrics."],o:[["HAS ONE","It is on annual leave."],["SHARING ONE","Not their turn today."],["RUNNING ON VIBES","No cells required."]],x:"Recount: the six are also on annual leave."},
+ {h:"Brain scan complete. Results are modest.",w:["GENIUS (LOCAL)","Once fixed the Wi-Fi by turning it off and on."],o:[["STILL BUFFERING","Please wait."],["PUSHES 'PULL' DOORS","With total confidence."],["ASKED IF FISH GET THIRSTY","Still waiting for an answer."]],x:"To be fair, nobody knows if fish get thirsty."}]},
+{id:'drama',e:'👑',t:"Who's the Drama Queen?",sig:'mouth',why:"Mouth was open for most of the scan. As it is for most of the day.",v:[
+ {h:"Drama levels: theatrical.",w:["CREATES THE DRAMA","Says 'I am not being dramatic' dramatically."],o:[["FILMS THE DRAMA","Already posted it."],["FUELS THE DRAMA","'I am just saying what everyone is thinking.'"],["SLEEPS THROUGH THE DRAMA","Wakes up to 214 messages."]],x:"Today's drama: someone used the wrong mug."},
+ {h:"A performance is in progress.",w:["LEAD ACTOR","Has stormed out of a room and had to come back for their keys."],o:[["THE AUDIENCE","Brought popcorn."],["THE CRITIC","'Six out of ten. Seen better storming.'"],["STAGE MANAGER","Quietly found the keys."]],x:"Encore expected at around 9 pm."}]},
+{id:'compat',e:'💔',t:"Friendship Compatibility",style:'meter',all:true,v:[
+ {pct:[2,9],h:"Compatibility disaster.",o:[["","Loads the dishwasher like a raccoon."],["","Has been 'five minutes away' since 2019."],["","Replies 'haha' and nothing else."],["","Claps when the plane lands."]],x:"Recommendation: stay friends anyway. Nobody else will have you."},
+ {pct:[96,99],h:"Compatibility dangerously high.",o:[["","Shares one brain cell. Has it today."],["","Finishes the other's sentences. Wrongly."],["","Co-owner of 400 inside jokes."],["","Laughs before the joke is finished."]],x:"Warning: this much agreement has never led to a good decision."},
+ {pct:[49,51],h:"Compatibility: a coin toss.",o:[["","Agrees on films. Disagrees on everything else."],["","Still angry about the board game in 2021."],["","Would help you move house. Would complain throughout."],["","Thinks they are the funny one."]],x:"You both think you are the funny one. That is the problem."}]},
+{id:'news',e:'📺',t:"Breaking News",style:'news',strip:'Breaking news',v:[
+ {h:"{n} adults have discussed where to eat for 47 minutes. Negotiations continue.",w:["SAID 'I DON'T MIND'","Minds a great deal."],o:[["VETOED EVERYTHING","Has no suggestions."],["JUST WANTS CHIPS","Has wanted chips since the start."],["STOPPED LISTENING","Is eating toast."]],x:"Developing: they went to the usual place."},
+ {h:"Local group takes 14 selfies and likes none of them.",w:["BLINKED","In all fourteen."],o:[["DEMANDED A RETAKE","Looked fine in every one."],["SAID 'ONE MORE'","Eleven times."],["HOLDING THE PHONE","Arm has gone numb."]],x:"Experts confirm the first one was the best."},
+ {h:"Person leaves group chat 'by accident' for the third time this month.",w:["THE LEAVER","'My thumb slipped.'"],o:[["RE-ADDED THEM","Again."],["DID NOT NOTICE","Has it on mute until 2030."],["TOOK IT PERSONALLY","Is drafting a paragraph."]],x:"Sources say the thumb did not slip."}]},
+{id:'alien',e:'👽',t:"Alien Among Us",sig:'still',why:"Stood unnaturally still. Real humans wobble.",v:[
+ {h:"One of you is not from here.",w:["FROM SATURN","Still does not understand tipping."],o:[["HUMAN (CONFIRMED)","Sadly."],["HUMAN, PROBABLY","Further tests needed."],["KNEW ALL ALONG","Kept quiet for the free spaceship rides."]],x:"The mission was to study humans. The report just says 'tired'."},
+ {h:"Non-human life form detected.",w:["ALIEN","Says 'I too enjoy weather' at parties."],o:[["EARTHLING","Fell for it completely."],["EARTHLING","Thought they were just from another city."],["THE ALIEN'S HANDLER","Exhausted."]],x:"Home planet has asked them not to come back."}]},
+{id:'past',e:'⏳',t:"Previous Lives",all:true,v:[
+ {h:"Past-life records retrieved.",o:[["VIKING WARRIOR","Feared across three fjords."],["PENGUIN","With disciplinary problems."],["MEDIEVAL PEASANT","Complained about the mud. Was right."],["ROYAL FOOD TASTER","Short career."],["A VERY LAZY CAT","Nothing has changed."]],x:"You have met before. It also ended in an argument about food."},
+ {h:"Reincarnation audit complete.",o:[["PIRATE CAPTAIN","Got seasick. Told no one."],["ROMAN SENATOR","Talked for nine hours. Said nothing."],["HOUSEPLANT","Overwatered. Still bitter."],["COURT JESTER","Fired for being too accurate."],["LIGHTHOUSE KEEPER","Loved it. Hated visitors."]],x:"None of you learned anything in any of them."}]},
+{id:'company',e:'🏢',t:"If You Started a Company",sig:'close',why:"Got in front of the camera first. That is how a CEO is chosen.",v:[
+ {h:"Company registered. Good luck.",w:["CEO","Visionary. Has never opened the spreadsheet."],o:[["CFO","Has lost the company credit card."],["HEAD OF SNACKS","The only department on budget."],["INTERN","Actually runs everything."]],x:"The company sells one product. Nobody is sure what it is."},
+ {h:"Start-up founded at 2 am. Regretted by noon.",w:["FOUNDER","Says 'disrupt' a lot. Mostly disrupts lunch."],o:[["CO-FOUNDER","Did the logo. Wants 50%."],["FIRST INVESTOR","Put in 20 euros. Wants updates."],["HR","Has a file on every one of you."]],x:"Acquired after six weeks. For the snacks budget."}]},
+{id:'court',e:'⚖️',t:"Friendship Courtroom",sig:'smile',why:"Smiled at the judge. Guilty people always do.",v:[
+ {h:"The court has reached a verdict.",w:["GUILTY","Liked a photo from 2016 at 3:42 am."],o:[["WITNESS","Got the notification. Took a screenshot."],["THE JUDGE","Has done far worse."],["DEFENCE LAWYER","'My client's thumb slipped.'"]],x:"Sentence: must reply to messages within a working week."},
+ {h:"Case closed.",w:["GUILTY","Said 'on my way' from bed."],o:[["THE VICTIM","Waited outside for 40 minutes."],["JURY MEMBER","Does the same thing. Voted guilty anyway."],["COURT ARTIST","Drew everyone slightly uglier."]],x:"Appeal denied. The location pin was shared in evidence."}]},
+{id:'reality',e:'🏆',t:"Who Wins the Reality Show?",sig:'far',why:"Kept furthest from the camera. Avoiding the drama is how you win.",v:[
+ {h:"Season finale results.",w:["WINNER","Did nothing for nine weeks. Flawless strategy."],o:[["OUT IN WEEK ONE","Eliminated during the introductions."],["THE VILLAIN EDIT","'I am not here to make friends.' Made no friends."],["FAN FAVOURITE","Cried at a sandwich. The nation wept too."]],x:"Prize money spent entirely on a hot tub. It leaks."},
+ {h:"The public has voted.",w:["CHAMPION","Won the final challenge by accident."],o:[["WALKED OUT","Came back ten minutes later for the buffet."],["HERE FOR LOVE","Found a buffet instead."],["FORGOT THE CAMERAS","Regrets episode four."]],x:"Reunion special cancelled. Nobody is speaking."}]},
+{id:'love',e:'❤️',t:"Who Loves Who More?",sig:'close',why:"Leaned in closer. Embarrassing, but sweet.",v:[
+ {h:"Affection audit complete.",w:["LOVES MORE","Would travel 1,000 km for you."],o:[["LOVES LESS","Would not cross the room for a charger."],["LOVES THE DOG MORE","Not sorry."],["LOVES FROM A DISTANCE","Preferably by text."]],x:"The 1,000 km trip would include complaining the whole way."},
+ {h:"Love levels measured.",w:["BIGGEST FAN","Has a folder of your worst photos. Out of love."],o:[["TOLERATES YOU","Warmly."],["HAS YOU ON MUTE","But checks sometimes."],["WOULD SHARE DESSERT","One bite. Supervised."]],x:"The folder is backed up in three places."}]},
+{id:'power',e:'🦸',t:"Useless Superpowers",all:true,v:[
+ {h:"Powers assigned. The world is not safer.",o:[["MICROWAVE SENSE","Knows exactly when it will beep."],["PERFECT PARALLEL QUEUER","Always picks the slowest queue."],["LUKEWARM TOUCH","Any drink becomes room temperature."],["USB INTUITION","Wrong way up. Every time. Guaranteed."],["SPOILER HEARING","Hears the ending from two rooms away."]],x:"Together you form the least requested team in history."},
+ {h:"Superhero registration complete.",o:[["CAPTAIN ALMOST","Nearly catches things."],["THE REMINDER","Remembers it the moment you leave the shop."],["SOCK VANISHER","One per wash. Cannot control it."],["HUMAN SNOOZE BUTTON","Nine more minutes, forever."],["DR. REPLY-ALL","Strikes without warning."]],x:"The city has asked you to stop helping."}]},
+{id:'lie',e:'🚨',t:"Lie Detector (Unreliable)",style:'news',strip:'Lie detector · not reliable',sig:'wiggly',why:"Twitched when the scanner said 'cake'.",v:[
+ {h:"99.8% chance someone ate the birthday cake before the party.",w:["LYING","'It was like that when I got here.'"],o:[["TELLING THE TRUTH","Nobody believes them."],["HELPED EAT IT","Has icing on their sleeve."],["BOUGHT THE CAKE","Is doing the maths on who was home."]],x:"Machine error: it was 100%."},
+ {h:"Lie detected: 'I have read the terms and conditions.'",w:["LIAR","Scrolled to the bottom in 0.4 seconds."],o:[["ALSO A LIAR","Did not even scroll."],["ACTUALLY READ THEM","Has not been the same since."],["CLICKED 'REMIND ME LATER'","Since 2017."]],x:"You have all agreed to give the scanner your shoes."}]},
+{id:'late',e:'⏰',t:"Who's Always Late?",sig:'far',why:"Furthest from the camera. Probably still on the way.",v:[
+ {h:"Punctuality report.",w:["ALWAYS LATE","Says 'almost there' while choosing an outfit."],o:[["ALWAYS EARLY","Has walked around the block four times."],["LIES ABOUT THE START TIME","To the late one. It still does not work."],["GAVE UP","Brings a book now."]],x:"Estimated arrival for the next plan: tomorrow."},
+ {h:"Time blindness detected.",w:["RUNS ON OWN TIME ZONE","Believes every journey takes ten minutes."],o:[["THE WAITER","Not the restaurant kind."],["SENDS 'WHERE ARE YOU'","Knows the answer."],["HOLDS THE TABLE","Has ordered twice out of guilt."]],x:"The scanner waited 20 minutes for this result."}]},
+{id:'doc',e:'🦁',t:"The Fake Documentary",style:'news',strip:'Nature documentary',v:[
+ {h:"Here we observe {n} humans, each pretending not to see the restaurant bill.",w:["THE ALPHA","Reaches for the wallet very, very slowly."],o:[["THE BATHROOM VISITOR","Times it perfectly. Every time."],["THE CALCULATOR","'I only had a starter.'"],["THE GENEROUS ONE","Paid last time. Will mention it."]],x:"The waiter has seen this before. The waiter is tired."},
+ {h:"A rare sighting: the group attempts to leave the house.",w:["READY FIRST","Stands by the door, sighing loudly."],o:[["LOST KEYS","They are in the hand."],["ONE MORE THING","There are always four more things."],["FORGOT WHERE WE ARE GOING","Coming anyway."]],x:"Departure took 53 minutes. The destination was next door."}]},
+];
+const NO_EVIDENCE = ["Evidence: none. The scanner just has a feeling.","Method: the scanner closed its eyes and pointed.","Evidence: purely the look on that face."];
+const SIG_MIN = {smile:.25, mouth:.12, brows:.2, tilt:6};
+
+/* ---------- State ---------- */
+const S = {mode:null, tracks:[], nextId:1, armed:false, since2:0, lost2:0, deck:[], roster:[], cur:null, curBubble:null,
+  timers:[], demoN:2, lastDet:0, count:-1};
+window.selfieChaos = S; // handy for debugging from the console
+let W = innerWidth, H = innerHeight;
+addEventListener('resize', () => { W = innerWidth; H = innerHeight; });
+const body = document.body, cam = $('#cam'), facesEl = $('#faces'), tray = $('#tray'), dock = $('#dock'), card = $('#card');
+const setState = s => { body.dataset.state = s; };
+const later = (fn, ms) => S.timers.push(setTimeout(fn, ms));
+
+/* ---------- Sound ---------- */
+let ac;
+function blip(f, d = .12, type = 'sine', g = .07) {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+    const o = ac.createOscillator(), a = ac.createGain();
+    o.type = type; o.frequency.value = f; a.gain.value = g;
+    a.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + d);
+    o.connect(a).connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
+  } catch (e) {}
+}
+
+/* ---------- Face detection ---------- */
+let landmarker = null;
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+async function loadDetector() {
+  const mp = await import(MP + '/vision_bundle.mjs');
+  const fileset = await mp.FilesetResolver.forVisionTasks(MP + '/wasm');
+  landmarker = await mp.FaceLandmarker.createFromOptions(fileset, {
+    baseOptions: {modelAssetPath: MODEL, delegate: location.search.includes('gpu') ? 'GPU' : 'CPU'},
+    runningMode: 'VIDEO', numFaces: 6, outputFaceBlendshapes: true,
+  });
+}
+function detectCam(now) {
+  if (cam.readyState < 2 || !cam.videoWidth) return null;
+  return detectEl(cam, cam.videoWidth, cam.videoHeight, true, now);
+}
+function detectPhoto(now) {
+  const img = $('#demoImg');
+  if (!img.complete || !img.naturalWidth) return null;
+  return detectEl(img, img.naturalWidth, img.naturalHeight, false, now);
+}
+function detectEl(el, vw, vh, mirror, now) {
+  if (!landmarker) return null;
+  let res;
+  try { res = landmarker.detectForVideo(el, now); } catch (e) { return null; }
+  const sc = Math.max(W / vw, H / vh), ox = (W - vw * sc) / 2, oy = (H - vh * sc) / 2;
+  return (res.faceLandmarks || []).map((lm, i) => {
+    let x0 = 1, x1 = 0, y0 = 1, y1 = 0;
+    for (const p of lm) { if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
+    const bs = {};
+    for (const c of (res.faceBlendshapes && res.faceBlendshapes[i] ? res.faceBlendshapes[i].categories : [])) bs[c.categoryName] = c.score;
+    const a = lm[33], b = lm[263];
+    let tilt = Math.abs(Math.atan2((b.y - a.y) * vh, (b.x - a.x) * vw) * 180 / Math.PI);
+    if (tilt > 90) tilt = 180 - tilt;
+    return {
+      x: ox + (mirror ? 1 - (x0 + x1) / 2 : (x0 + x1) / 2) * vw * sc, y: oy + (y0 + y1) / 2 * vh * sc,
+      w: (x1 - x0) * vw * sc * 1.2, h: (y1 - y0) * vh * sc * 1.2,
+      smile: ((bs.mouthSmileLeft || 0) + (bs.mouthSmileRight || 0)) / 2, mouth: bs.jawOpen || 0,
+      brows: Math.max(bs.browInnerUp || 0, ((bs.browOuterUpLeft || 0) + (bs.browOuterUpRight || 0)) / 2), tilt,
+    };
+  });
+}
+/* Demo: wobbling stand-in faces with made-up signals, so the game can be tried without a camera. */
+let demoMood = [], demoMoodAt = -1e9;
+function detectDemo(now) {
+  const n = S.demoN;
+  if (now - demoMoodAt > 3000) { demoMoodAt = now; demoMood = Array.from({length: 6}, () => ({smile: Math.random(), mouth: Math.random() * .5, brows: Math.random() * .6, tilt: Math.random() * 14, wig: .3 + Math.random() * 2, size: .85 + Math.random() * .3})); }
+  const base = Math.min(W / (n + 1.3), H * .24, 200);
+  return Array.from({length: n}, (_, i) => {
+    const m = demoMood[i], t = now / 1000;
+    return {x: W * (i + 1) / (n + 1) + Math.sin(t * 1.3 + i * 2) * 7 * m.wig, y: H * .34 + Math.cos(t * 1.1 + i) * 6 * m.wig,
+      w: base * m.size, h: base * m.size * 1.15, smile: m.smile, mouth: m.mouth, brows: m.brows, tilt: m.tilt};
+  });
+}
+
+/* ---------- Tracking: keep a stable id on each face from frame to frame ---------- */
+const DEMO_EMOJI = ['😀', '😎', '🤨', '😴', '🥳', '🤓'];
+function makeTrack(d, now) {
+  const t = {id: S.nextId++, x: d.x, y: d.y, w: d.w, h: d.h, tx: d.x, ty: d.y, tw: d.w, th: d.h, lastSeen: now, acc: null, frozen: false};
+  t.el = document.createElement('div'); t.el.className = 'face';
+  t.el.innerHTML = '<div class="ring"></div>';
+  if (S.mode === 'demo') { const e = document.createElement('div'); e.className = 'emoji'; e.textContent = DEMO_EMOJI[(t.id - 1) % DEMO_EMOJI.length]; t.el.prepend(e); }
+  t.lab = document.createElement('div'); t.lab.className = 'label'; t.lab.hidden = true;
+  facesEl.append(t.el, t.lab);
+  return t;
+}
+function updateTracks(dets, now) {
+  const pairs = [];
+  S.tracks.forEach((t, ti) => dets.forEach((d, di) => {
+    const dist = Math.hypot(t.tx - d.x, t.ty - d.y);
+    if (dist < .8 * Math.max(t.tw, d.w)) pairs.push({ti, di, dist});
+  }));
+  pairs.sort((a, b) => a.dist - b.dist);
+  const usedT = new Set(), usedD = new Set();
+  for (const p of pairs) {
+    if (usedT.has(p.ti) || usedD.has(p.di)) continue;
+    usedT.add(p.ti); usedD.add(p.di);
+    const t = S.tracks[p.ti], d = dets[p.di];
+    if (t.acc) { const a = t.acc; a.n++; a.smile += d.smile; a.mouth += d.mouth; a.brows += d.brows; a.tilt += d.tilt; a.move += p.dist / Math.max(d.w, 1); a.size += d.w; }
+    t.tx = d.x; t.ty = d.y; t.tw = d.w; t.th = d.h; t.lastSeen = now;
+  }
+  dets.forEach((d, di) => { if (!usedD.has(di) && S.tracks.length < 8) S.tracks.push(makeTrack(d, now)); });
+}
+function prune(now) {
+  S.tracks = S.tracks.filter(t => {
+    if (t.frozen || now - t.lastSeen < 900) return true;
+    t.el.remove(); t.lab.remove(); return false;
+  });
+}
+const present = now => S.tracks.filter(t => now - t.lastSeen < 450);
+
+/* ---------- Per-frame ---------- */
+function frame(now) {
+  S.frameNow = now;
+  if (now - S.lastDet >= 66) {
+    const dets = S.mode === 'cam' ? detectCam(now) : S.mode === 'photo' ? detectPhoto(now) : detectDemo(now);
+    if (dets) { S.lastDet = now; updateTracks(dets, now); }
+  }
+  prune(now);
+  const n = present(now).length;
+  if (n >= 2) { S.lost2 = 0; if (!S.since2) S.since2 = now; if (now - S.since2 > 500) S.armed = true; }
+  else { S.since2 = 0; if (!S.lost2) S.lost2 = now; if (now - S.lost2 > 1200) S.armed = false; }
+  if (n !== S.count || dock.classList.contains('locked') === S.armed) {
+    S.count = n;
+    $('#count span').textContent = n ? `Live · ${n} player${n > 1 ? 's' : ''}` : 'Live';
+    dock.classList.toggle('locked', !S.armed);
+    $('#hintText').textContent = S.armed ? 'Tap a question' : n === 1 ? 'Find another troublemaker!' : n >= 2 ? 'Hold still…' : 'Looking for faces…';
+  }
+  const cardTop = card.hidden ? H : card.getBoundingClientRect().top;
+  for (const t of S.tracks) {
+    t.x += (t.tx - t.x) * .35; t.y += (t.ty - t.y) * .35; t.w += (t.tw - t.w) * .25; t.h += (t.th - t.h) * .25;
+    t.el.style.width = t.w + 'px'; t.el.style.height = t.h + 'px';
+    t.el.style.transform = `translate(${t.x - t.w / 2}px,${t.y - t.h / 2}px)`;
+    t.el.classList.toggle('lost', now - t.lastSeen > 450);
+  }
+  if (S.roster.length && !S.roster[0].lab.hidden) layoutLabels(cardTop);
+  requestAnimationFrame(frame);
+}
+/* Labels sit under each face (thoughts go above). With four or more players they
+   alternate below/above, and neighbours in a row are pushed apart so they never overlap. */
+function layoutLabels(cardTop) {
+  const two = S.roster.length >= 4, rows = [[], []];
+  S.roster.forEach((t, i) => {
+    const up = t.lab.classList.contains('think') || (two && i % 2 === 1);
+    rows[up ? 1 : 0].push({t, up, lw: t.lab.offsetWidth, lh: t.lab.offsetHeight, lx: 0});
+  });
+  for (const row of rows) {
+    row.sort((a, b) => a.t.x - b.t.x);
+    row.forEach((r, i) => { r.lx = Math.max(i ? row[i - 1].lx + row[i - 1].lw + 6 : 8, r.t.x - r.lw / 2); });
+    for (let i = row.length - 1; i >= 0; i--) { const r = row[i]; r.lx = Math.min(r.lx, (i < row.length - 1 ? row[i + 1].lx - 6 : W - 8) - r.lw); }
+    for (const r of row) {
+      const t = r.t, below = t.y + t.h / 2 + 10, above = t.y - t.h / 2 - r.lh - 14;
+      let ly = (r.up || below + r.lh > cardTop - 8) ? above : below;
+      ly = Math.max(56, Math.min(cardTop - r.lh - 8, ly));
+      t.lab.style.transform = `translate(${r.lx}px,${ly}px)`;
+    }
+  }
+}
+
+/* ---------- Bubbles ---------- */
+function addBubble(delay = 0) {
+  const q = S.deck.shift(); if (!q) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'bubble'; b.style.animationDelay = delay + 'ms';
+  const e = document.createElement('span'); e.textContent = q.e;
+  const t = document.createElement('span'); t.textContent = q.t;
+  b.append(e, t);
+  b.addEventListener('click', () => choose(q, b));
+  tray.append(b);
+}
+function updateLeft() {
+  const n = S.deck.length + tray.querySelectorAll('.bubble').length;
+  $('#left').textContent = n ? n + ' left' : '';
+  let empty = $('#empty');
+  if (!n && !empty) { empty = document.createElement('div'); empty.id = 'empty'; empty.textContent = 'That was every question. Tap New session for another round.'; tray.append(empty); }
+  if (n && empty) empty.remove();
+}
+function newSession() {
+  if (body.dataset.state !== 'play') return;
+  S.deck = shuffle(Q); tray.textContent = '';
+  const slots = H < 620 ? 3 : 4;
+  for (let i = 0; i < slots; i++) addBubble(i * 90);
+  updateLeft();
+}
+
+/* ---------- Reveal ---------- */
+function choose(q, bubble) {
+  const now = S.frameNow || performance.now(); // judge "who is here" as of the last drawn frame
+  if (body.dataset.state !== 'play' || !S.armed) return;
+  const roster = present(now).sort((a, b) => a.x - b.x).slice(0, 6);
+  if (roster.length < 2) return;
+  S.roster = roster; S.cur = q; S.curBubble = bubble;
+  roster.forEach(t => { t.frozen = true; t.acc = {n: 0, smile: 0, mouth: 0, brows: 0, tilt: 0, move: 0, size: 0}; t.el.classList.add('in'); });
+  setState('scan'); $('#scan').hidden = false;
+  const chip = $('#chip'); chip.textContent = `${q.e} ${q.t}`; chip.hidden = false;
+  blip(520); later(() => blip(620), 500); later(() => blip(740), 1000);
+  later(reveal, 1500);
+}
+function reveal() {
+  const q = S.cur, roster = S.roster, n = roster.length;
+  const score = t => {
+    const a = t.acc, m = k => a.n ? a[k] / a.n : 0;
+    switch (q.sig) {
+      case 'smile': return m('smile'); case 'mouth': return m('mouth'); case 'quiet': return -m('mouth');
+      case 'brows': return m('brows'); case 'tilt': return m('tilt'); case 'wiggly': return m('move');
+      case 'still': return -m('move'); case 'close': return m('size'); case 'far': return -m('size');
+      default: return Math.random();
+    }
+  };
+  const ranked = roster.map(t => ({t, s: score(t) + Math.random() * 1e-6})).sort((a, b) => b.s - a.s);
+  let why = q.why || '';
+  if (why && SIG_MIN[q.sig] != null && ranked[0].s < SIG_MIN[q.sig]) why = rnd(NO_EVIDENCE);
+
+  const fits = q.v.filter(v => !v.n || (n >= v.n[0] && n <= v.n[1]));
+  const v = rnd(fits.length ? fits : q.v);
+  const pool = shuffle(v.o);
+  const order = q.all ? shuffle(roster) : ranked.map(r => r.t);
+  const perRow = (n >= 4 && q.style !== 'think') ? Math.ceil(n / 2) : n;
+  const maxW = Math.min(250, (W - 16) / perRow - 6) + 'px';
+  order.forEach((t, i) => {
+    t.lab.style.maxWidth = maxW;
+    const win = !q.all && i === 0;
+    const [tag, line] = win ? v.w : pool[(q.all ? i : i - 1) % pool.length];
+    t.lab.className = 'label' + (win ? ' win' : '') + (q.style === 'think' ? ' think' : '');
+    t.lab.textContent = '';
+    if (tag) { const b = document.createElement('span'); b.className = 'tag'; b.textContent = tag; t.lab.append(b); }
+    if (line) { const s = document.createElement('span'); s.className = 'line'; s.textContent = line; t.lab.append(s); }
+    t.lab.style.animationDelay = (i * 160) + 'ms';
+    t.lab.hidden = false;
+  });
+
+  $('#scan').hidden = true; $('#chip').hidden = true;
+  const strip = $('#strip'); strip.hidden = !q.strip; strip.textContent = q.strip || '';
+  $('#qt').textContent = `${q.e} ${q.t}`;
+  $('#head').textContent = v.h.replace('{n}', n).replace('{m}', n - 1);
+  const meter = $('#meter'); meter.hidden = !v.pct;
+  if (v.pct) {
+    const target = v.pct[0] + Math.floor(Math.random() * (v.pct[1] - v.pct[0] + 1)), t0 = performance.now();
+    const tick = now => { const k = Math.min(1, (now - t0) / 1100); meter.textContent = Math.round(target * (1 - Math.pow(1 - k, 3))) + '%'; if (k < 1 && !card.hidden) requestAnimationFrame(tick); };
+    meter.textContent = '0%'; requestAnimationFrame(tick);
+  }
+  const whyEl = $('#why'); whyEl.hidden = !why; whyEl.textContent = why;
+  $('#twist').hidden = true; $('#next').hidden = true;
+  card.hidden = false; setState('reveal');
+  blip(784, .22, 'triangle', .09);
+  later(() => { $('#twist').textContent = v.x; $('#twist').hidden = false; $('#next').hidden = false; blip(392, .25, 'triangle', .07); }, 2600);
+  later(endReveal, 12000);
+}
+function endReveal() {
+  if (body.dataset.state !== 'reveal') return;
+  S.timers.forEach(clearTimeout); S.timers = [];
+  S.roster.forEach(t => { t.frozen = false; t.acc = null; t.lab.hidden = true; t.el.classList.remove('in'); });
+  S.roster = []; card.hidden = true;
+  if (S.curBubble) { S.curBubble.remove(); S.curBubble = null; addBubble(150); }
+  updateLeft(); setState('play');
+}
+$('#next').addEventListener('click', endReveal);
+$('#newBtn').addEventListener('click', newSession);
+$('#count').addEventListener('click', () => {
+  if (body.dataset.state !== 'play') return;
+  if (S.mode === 'demo') S.demoN = S.demoN % 5 + 1;
+  if (S.mode === 'photo') { S.photoI = (S.photoI + 1) % PHOTOS.length; $('#demoImg').src = PHOTOS[S.photoI]; }
+});
+
+/* ---------- Start ---------- */
+const status = m => { $('#status').textContent = m; };
+function begin(mode) {
+  S.mode = mode; $('#start').hidden = true; $('#demoBg').hidden = mode !== 'demo'; $('#demoImg').hidden = mode !== 'photo';
+  setState('play'); newSession();
+  try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+  requestAnimationFrame(frame);
+}
+async function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status('The camera only works when this page is opened from an https:// address.'); return; }
+  $('#goCam').disabled = true; status('Asking for the camera…');
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user', width: {ideal: 1280}, height: {ideal: 720}}, audio: false});
+    cam.srcObject = stream; await cam.play();
+  } catch (e) {
+    status(e && e.name === 'NotAllowedError' ? 'Camera access was refused. Allow the camera for this page in Safari settings, then reload.' : 'No camera could be opened on this device.');
+    $('#goCam').disabled = false; return;
+  }
+  status('Loading the face scanner…');
+  try { await loadDetector(); }
+  catch (e) {
+    stream.getTracks().forEach(t => t.stop());
+    status('The face scanner could not load. Check the internet connection and try again.');
+    $('#goCam').disabled = false; return;
+  }
+  status(''); begin('cam');
+}
+$('#goCam').addEventListener('click', () => { blip(440, .05); startCamera(); });
+/* Demo without a camera: a stock photo of friends, scanned by the real face scanner.
+   Tap the player count to switch photo. Falls back to cartoon faces if it cannot load. */
+const PHOTOS = ['1703995886184-8a678fa16980', '1772723246368-05f6037930d1', '1560220980-16ad88bd91df']
+  .map(id => `https://images.unsplash.com/photo-${id}?w=900&q=70&fit=crop&ar=9:19.5&crop=faces`);
+S.photoI = 0;
+async function startDemo() {
+  status('Loading the demo…');
+  try {
+    const img = $('#demoImg');
+    await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = PHOTOS[0]; });
+    await loadDetector();
+    status(''); begin('photo');
+  } catch (e) { status(''); begin('demo'); }
+}
+$('#goDemo').addEventListener('click', () => { blip(440, .05); startDemo(); });
+if (location.hash === '#demo') startDemo();
+if (location.hash === '#cartoon') begin('demo');
+})();
+</script>
+</body>
+</html>
